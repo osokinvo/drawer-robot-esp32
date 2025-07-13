@@ -2,7 +2,6 @@
 
 #include "main.h"
 
-
 int lock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag) {
 // Locks the axis by closing the mechanical brake.
 // The function checks the state of the brake flag and changes the signals on
@@ -54,7 +53,44 @@ int unlock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag)
     return OK;
 }
 
-int position_control_stepper(RobotParams *params, int step_pin, int dir_pin, int prev_speed, intbrake_flag) {
-    
+void motor_control_step(motor_control_t* motor) {
+    // Считаем ошибку между планом и энкодером
+    float error = motor->planned_position_steps - motor->encoder_position_steps * MOTOR_STEP_PER_RATATION / ENCODER_STEP_PER_RATATION;
+
+    // Коррекция скорости по отставанию/опережению
+    if (error > 0.0f) {
+        // Двигатель отстаёт — ускоряемся
+        if (motor->speed_adjustment < MAX_ADJUSTMENT)
+            motor->speed_adjustment += ADJUSTMENT_STEP;
+    } else if (error < 0.0f) {
+        // Двигатель опережает — замедляемся
+        if (motor->speed_adjustment > -MAX_ADJUSTMENT)
+            motor->speed_adjustment -= ADJUSTMENT_STEP;
+    }
+
+    // Задержка между шагами с учётом коррекции
+    float delay_us = motor->base_step_delay_us * (1.0f - motor->speed_adjustment);
+
+    // Отправляем шаг
+    gpio_set_level(motor->step_pin, 1);
+}
+
+int position_control_stepper(motor_control_t *motor, int prev_speed, int accel) {
+    // Задать направление на основе цели
+    if (motor->target_position > motor->planned_position)
+        motor->direction = 1;
+    else
+        motor->direction = -1;
+
+    // Шагаем до достижения цели
+    while ((motor->direction > 0 && motor->planned_position < motor->target_position) ||
+           (motor->direction < 0 && motor->planned_position > motor->target_position)) {
+        motor->step_delay_us = 10000000 / prev_speed;
+        motor_control_step(motor);
+        motor->planned_position += motor->direction;
+        prev_speed += accel * motor->step_delay_us / 1000000;
+    }
+
+    return OK;
 }
 

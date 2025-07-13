@@ -1,6 +1,22 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_timer.h"
+#include <math.h>
+#include "encoder_handler.h"
+#include "driver/pcnt.h"
+#include "freertos/queue.h"
+
+#include "main.h"
+#include "gcode.h"
+
 // =============================================
 // Аналоговые входы (ADC1, 12-бит)
 // =============================================
@@ -76,6 +92,22 @@
 #define V_AXIS_MAX_LIMIT     (1 << 7)  // PORT0.7 (IO0_7) Концевой датчик max положения оси V
 #define V_AXIS_MIN_LIMIT     (1 << 1)  // PORT1.1 (IO1_1) Концевой датчик min положения оси V
 
+// =============================================
+// Данные двигателей и энкодеров
+// =============================================
+#define MOTOR_BASE_STEP_PER_RATATION    200     // Базоваое количество шагов на оборот шагового двигателя
+#define MICROSTEPS_PER_STEP             1       // Количество микрошагов в шаге
+#define MOTOR_STEP_PER_RATATION         MOTOR_BASE_STEP_PER_RATATION * MICROSTEPS_PER_STEP
+// Шагов на оборот шагового двигателя
+#define MOTOR_MIN_SPEED                 10      // Минимальная скорость двигателя (шагов в секунду)
+#define MOTOR_MAX_SPEED                 1000    // Максимальная скорость двигателя (шагов в секунду)
+//#define MOTOR_ACCELERATION              100     // Ускорение двигателя
+
+#define BRAKE_MOTOR_STEP_PER_RATATION   200     // Шагов на оборот шагового тормоза
+#define ENCODER_STEP_PER_RATATION       2048    // Шагов на оборот энкодера
+#define ENCODER2MOTOR_STEP_KOEF MOTOR_STEP_PER_RATATION / ENCODER_STEP_PER_RATATION
+// Коэффициент преобразования шагов энкодера в шаги двигателя
+
 #define TRUE 1                         // Признак активации флагов
 #define FALSE 0                        // Признак деактивации флагов
 
@@ -119,4 +151,5 @@ int lock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag);
 
 void unlock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag);
 // Разблокирует ось, открывая механический тормоз. Возвращает ОК, когда ось разблокируется.
+
 #endif
