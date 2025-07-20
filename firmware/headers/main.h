@@ -10,12 +10,14 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include <math.h>
-#include "encoder_handler.h"
 #include "driver/pcnt.h"
+#include "driver/gpio.h"
 #include "freertos/queue.h"
 
-#include "main.h"
+#include "encoder.h"
 #include "gcode.h"
+#include "motor.h"
+
 
 // =============================================
 // Аналоговые входы (ADC1, 12-бит)
@@ -54,7 +56,15 @@
 #define Z_AXIS_MOTOR_DIR_PIN         1  // GPIO1  - Направление вращения двигателя оси Z
 
 // =============================================
-// Управление тормозами (цифровые выходы)
+// Управление осью U (цифровые выходы)
+// =============================================
+#define U_AXIS_MOTOR_STEP_PIN      16  // GPIO16 - Шаг двигателя оси U
+#define U_AXIS_MOTOR_DIR_PIN        4  // GPIO4  - Направление двигателя оси U
+#define U_AXIS_BRAKE_STEP_PIN       2  // GPIO2  - Шаг тормоза оси U
+#define U_AXIS_BRAKE_DIR_PIN       15  // GPIO15 - Направление тормоза оси U
+
+// =============================================
+// Управление осью V (цифровые выходы)
 // =============================================
 #define V_AXIS_BRAKE_DIR_PIN         3  // GPIO3  - Направление тормоза оси V
 #define V_AXIS_BRAKE_STEP_PIN       21  // GPIO21 - Шаг управления тормозом оси V
@@ -66,14 +76,6 @@
 // =============================================
 #define I2C_SCL_PIN                 5  // GPIO5  - Тактовая линия I2C
 #define I2C_SDA_PIN                17  // GPIO17 - Линия данных I2C
-
-// =============================================
-// Управление осью U (цифровые выходы)
-// =============================================
-#define U_AXIS_MOTOR_STEP_PIN      16  // GPIO16 - Шаг двигателя оси U
-#define U_AXIS_MOTOR_DIR_PIN        4  // GPIO4  - Направление двигателя оси U
-#define U_AXIS_BRAKE_STEP_PIN       2  // GPIO2  - Шаг тормоза оси U
-#define U_AXIS_BRAKE_DIR_PIN       15  // GPIO15 - Направление тормоза оси U
 
 // =============================================
 // Конфигурация PCA9555D
@@ -143,7 +145,7 @@ typedef struct {
 
 
 // =============================================
-// motor.c
+// stepper.c
 // =============================================
 
 int lock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag);
@@ -151,5 +153,9 @@ int lock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag);
 
 void unlock_axis(RobotParams *params, int step_pin, int dir_pin, int *brake_flag);
 // Разблокирует ось, открывая механический тормоз. Возвращает ОК, когда ось разблокируется.
+
+int position_control_stepper(motor_control_t *motor, int prev_speed, int accel);
+// Перемещает шаговый двигатель на участке траектории, заданном в структуре motor_control_t.
+
 
 #endif
