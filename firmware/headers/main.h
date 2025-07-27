@@ -1,22 +1,39 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <ctype.h>
+#include <queue.h>
+#include <math.h>
+#include <semphr.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #include <stdlib.h>
+#include <task.h>
+#include <WiFi.h>
+
 #include "driver/gpio.h"
+#include "driver/pcnt.h"
+// #include "driver/sdmmc_host.h" // TF-card (закомментировано)
+#include "esp_timer.h"
+#include "esp_log.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_spiffs.h"
+#include "esp_system.h"
+#include "esp_websocket_client.h"
+#include "nvs_flash.h"
+#include "mdns.h"
+#include <FreeRTOS.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_timer.h"
-#include <math.h>
-#include "driver/pcnt.h"
-#include "driver/gpio.h"
 #include "freertos/queue.h"
+// #include "sdmmc_cmd.h" // TF-card (закомментировано)
 
 #include "encoder.h"
 #include "gcode.h"
 #include "motor.h"
+#include "wifi.h"
 
 
 // =============================================

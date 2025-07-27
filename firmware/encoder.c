@@ -33,10 +33,11 @@ void encoder_init(encoder_t* enc, gpio_num_t pin_a, gpio_num_t pin_b) {
 
     io_conf.pin_bit_mask = (1ULL << pin_b);
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.intr_type = GPIO_INTR_DISABLE;
+    io_conf.intr_type = GGPIO_INTR_POSEDGE;
     io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
     gpio_config(&io_conf);
 
     // Регистрация обработчика с передачей указателя на структуру
     gpio_isr_handler_add(pin_a, encoder_isr_handler, enc);
+    gpio_isr_handler_add(pin_b, encoder_isr_handler, enc);
 }

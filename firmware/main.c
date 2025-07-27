@@ -1,47 +1,15 @@
-#include <WiFi.h>
-#include <FreeRTOS.h>
-#include <task.h>
-#include <queue.h>
-#include <semphr.h>
+
 
 //Этот файл содержит основную функцию setup() и loop(), которые вызываются при запуске программы. В этом файле можно разместить код, который инициализирует контроллер, устанавливает соединение с WiFi и запускает основной цикл программы.
 
-
-
-// Пины для шаговых двигателей
-const int stepPins[] = {16, 17, 18, 19};
-
-// Пины для двигателей постоянного тока
-const int dcPins[] = {20, 21};
-
-// Пины для концевых датчиков
-const int sensorPins[] = {22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
-
-// Пины для I2C
-const int i2cSda = 32;
-const int i2cScl = 33;
-
-// Пины для энкодеров
-const int encoderPins[] = {34, 35, 36, 37, 38, 39};
-
-// WiFi параметры
-const char* ssid = "your_ssid";
-const char* password = "your_password";
 
 // Глобальные переменные
 QueueHandle_t gCodeQueue;
 SemaphoreHandle_t mutex;
 
 void setup() {
-  Serial.begin(115200);
-
-  // Настройка WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
+  
+  wifi_main(void)
 
   // Создание задачи для приема G-кода
   xTaskCreate(receiveGCodeTask, "Receive G-Code", 2048, NULL, 2, NULL);
@@ -190,4 +158,9 @@ void readWeights() {
 void readEncoders() {
   // Чтение данных с энкодеров
   // ...
+}
+
+void main() {
+  
+
 }
