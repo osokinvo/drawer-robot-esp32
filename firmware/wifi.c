@@ -5,8 +5,6 @@
 // WiFi параметры
 const char* ssid = "your_ssid";
 const char* password = "your_password";
-static EventGroupHandle_t s_wifi_event_group;
-static const char *TAG = "GCODE_SYSTEM";
 
 static esp_websocket_client_handle_t ws_client;
 static char device_id[13] = {0};
@@ -20,37 +18,81 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        ESP_LOGI(TAG, "Disconnected. Reconnecting...");
         esp_wifi_connect();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "Got IP:" IPSTR, IP2STR(&event->ip_info.ip));
     }
 }
 
-static void wifi_init(void)
+// ---------- mDNS ----------
+static void mdns_init_client(void)
 {
+    ESP_ERROR_CHECK(mdns_init());
+    ESP_ERROR_CHECK(mdns_hostname_set("esp32-client"));
+    ESP_ERROR_CHECK(mdns_instance_name_set("Driving robot Client"));
+}
+
+static esp_err_t wifi_init(void)
+{
+    esp_err_t err;
     
+    // Инициализация NVS (исользуется для хранения конфигурации Wi-Fi)
+    err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase()); // Очистка в случае повреждения или несовместивости
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+
      // Инициализация TCP/IP стекa и сетевого интерфейса
-    ESP_ERROR_CHECK(esp_netif_init());
+     err = esp_netif_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
 
     // Создаём и запускаем дефолтный цикл обработки событий (события Wi-Fi, IP и т.п.)
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
 
     // Создаём сетевой интерфейс Wi-Fi в режиме станции (STA)
-    esp_netif_create_default_wifi_sta();
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta_netif == NULL){
+        sta_netif = esp_netif_create_default_wifi_sta();
+        if (sta_netif == NULL){
+            return ESP_FAIL;
+        }
+    }
 
     // Конфигурация Wi-Fi с настройками по умолчанию
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 
     // Инициализация драйвера Wi-Fi с указанной конфигурацией
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
 
     // Регистрируем обработчик событий Wi-Fi (подключение, отключение и т.п.)
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL));
+    err = esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
 
     // Регистрируем обработчик событий IP (получение IP адреса и т.п.)
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL));
+    err = esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
+
+    // Устанавливаем режим работы Wi-Fi — станция (подключается к роутеру)
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
 
     // Конфигурация параметров подключения Wi-Fi: SSID, пароль и уровень защиты
     wifi_config_t wifi_config = {
@@ -58,19 +100,26 @@ static void wifi_init(void)
             .ssid = ssid,              // Имя Wi-Fi сети
             .password = password,          // Пароль от сети
             .threshold.authmode = WIFI_AUTH_WPA2_PSK, // Минимальный уровень защиты
+            .pmf_cfg.capable = true,   // Поддерживает PMF
+            .pmf_cfg.required = false, // PMF не требуется
         },
     };
 
-    // Устанавливаем режим работы Wi-Fi — станция (подключается к роутеру)
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
     // Передаём конфигурацию в драйвер Wi-Fi
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    if (err != ESP_OK){
+        return err;
+    }
 
     // Запускаем Wi-Fi
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_start()
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+        return err;
+    }
 
-    ESP_LOGI(TAG, "Wi-Fi initialization finished.");;
+    mdns_init_client(void);
+
+    return ESP_OK;
 }
 
 // ---------- Получение MAC ----------
@@ -80,7 +129,57 @@ static void get_device_id()
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(device_id, sizeof(device_id), "%02X%02X%02X%02X%02X%02X",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    ESP_LOGI(TAG, "Device ID (MAC): %s", device_id);
+}
+
+esp_err_t http_event_handler(esp_http_client_event_t *evt)
+{
+    return ESP_OK;
+}
+
+void download_command_from_server()
+{
+    esp_http_client_config_t config = {
+        .url = HTTP_COMAND_URL,
+        .metod = HTTP_METHOD_GET,
+        .event_handler = &websocket_event_handler,
+    }
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == NULL) {
+        return;   
+    }
+
+    esp_err_t err = esp_http_client_open(client, ESP_HTTP_METHOD_GET)
+    if (err != ESP_OK) {
+        esp_http_client_cleanup(client);
+        return err;
+    }
+    int total_len = esp_http_client_fetch_headers(client);
+
+    if (total_len <>= 0 || total_len % sizeof(command_t) != 0) {
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        return ESP_FAIL;
+    }
+    size_t max_bytes = MAX_COMMANDS * sizeof(command_t);
+    size_t bytes_to_read = (total_len <= max_bytes) ? total_len : max_bytes;
+    command_count = bytes_to_read / sizeof(command_t);
+
+    uint8_t *buffer = (uint8_t *)command_buffer;  // Прямой доступ к памяти
+    size_t total_read = 0;
+
+    while (total_read < bytes_to_read) {
+        int r = esp_http_client_read(client, (char *)(buffer + total_read), bytes_to_read - total_read);
+        if (r <= 0) break;
+        total_read += r;
+    }
+
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+
+    return (total_read == bytes_to_read) ? ESP_OK : ESP_FAIL;
+}
+
 }
 
 // ---------- WebSocket обработчик ----------
@@ -88,54 +187,39 @@ static void websocket_event_handler(void *handler_args, esp_event_base_t base, i
 {
     char expected[20];
 
-    if (event_id == WEBSOCKET_EVENT_CONNECTED) {
-        ESP_LOGI(TAG, "WebSocket connected");
-    }
-    else if (event_id == WEBSOCKET_EVENT_DATA) {
-        ESP_LOGI(TAG, "Received: %.*s", event_data->data_len, (char *)event_data->data_ptr);
+    if (event_id == WEBSOCKET_EVENT_DATA) {
 
         // Проверяем ответ: "OK:<device_id>"
         snprintf(expected, sizeof(expected), "OK:%s", device_id);
 
         if (strncmp((char *)event_data->data_ptr, expected, strlen(expected)) == 0) {
-            ESP_LOGI(TAG, "Handshake successful");
             handshake_ok = true;
+        }
+        else if (strncmp((char *)event_data->data_ptr, 'load_command', strlen('load_command')) == 0)
+        {
+            download_command_from_server();
         }
     }
 }
 
-// ---------- mDNS ----------
-static void mdns_init_client(void)
-{
-    ESP_ERROR_CHECK(mdns_init());
-    ESP_ERROR_CHECK(mdns_hostname_set("esp32-client"));
-    ESP_ERROR_CHECK(mdns_instance_name_set("ESP32 GCODE Client"));
-    ESP_LOGI(TAG, "mDNS initialized");
-}
-
 // ---------- Поиск и подключение к серверу ----------
-static bool find_and_connect_server()
+static esp_err_t find_and_connect_server()
 {
-    ESP_LOGI(TAG, "Searching for servers with service _gcode._tcp.local ...");
-
+    esp_err_t err;
     mdns_result_t *results = NULL;
-    esp_err_t err = mdns_query_ptr("_gcode", "_tcp", 3000, 10, &results);
+    esp_err_t err = mdns_query_ptr("_command", "_tcp", 3000, 10, &results);
 
     if (err) {
-        ESP_LOGE(TAG, "mDNS query failed: %s", esp_err_to_name(err));
-        return false;
+        return ESP_FAIL;
     }
     if (!results) {
-        ESP_LOGW(TAG, "No servers found");
-        return false;
+        return ESP_FAIL;
     }
 
     for (mdns_result_t *r = results; r; r = r->next) {
         char addr[64];
         inet_ntoa_r(((struct sockaddr_in *)r->addr)->sin_addr, addr, sizeof(addr));
         int port = r->port;
-
-        ESP_LOGI(TAG, "Trying server: %s:%d", addr, port);
 
         // Формируем URI WebSocket
         char ws_uri[128];
@@ -146,8 +230,22 @@ static bool find_and_connect_server()
         };
 
         ws_client = esp_websocket_client_init(&websocket_cfg);
-        esp_websocket_register_events(ws_client, WEBSOCKET_EVENT_ANY, websocket_event_handler, NULL);
-        esp_websocket_client_start(ws_client);
+        if (ws_client == NULL) {
+            mdns_query_results_free(results);
+            return ESP_FAIL;
+        }
+
+        err = esp_websocket_register_events(ws_client, WEBSOCKET_EVENT_ANY, websocket_event_handler, NULL);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+            mdns_query_results_free(results);
+            return err;
+        }
+
+        err = esp_websocket_client_start(ws_client);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE){
+            mdns_query_results_free(results);
+            return err;
+        }
 
         // Ждём соединения
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -161,11 +259,9 @@ static bool find_and_connect_server()
             vTaskDelay(pdMS_TO_TICKS(1000));
 
             if (handshake_ok) {
-                ESP_LOGI(TAG, "Server confirmed handshake");
                 mdns_query_results_free(results);
                 return true;
             } else {
-                ESP_LOGW(TAG, "Handshake failed, closing connection");
                 esp_websocket_client_stop(ws_client);
                 esp_websocket_client_destroy(ws_client);
             }
@@ -182,91 +278,27 @@ bool wifi_is_connected()
     return (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
 }
 
-// ======== INIT FILE SYSTEM ========
-void init_filesystem()
+
+void connect_wifi(void)
 {
-    esp_vfs_spiffs_conf_t conf = {
-        .base_path = "/spiffs",
-        .partition_label = NULL,
-        .max_files = 5,
-        .format_if_mount_failed = true
-    };
-    esp_vfs_spiffs_register(&conf);
-    ESP_LOGI(TAG, "SPIFFS mounted");
-}
-
-// ======== READ LINE FROM FLASH ========
-bool read_comand_code_line_from_flash(FILE *f, char *buffer, size_t bufsize)
-{
-    if (fgets(buffer, bufsize, f) != NULL) {
-        return true;
+    while (!find_and_connect_server()) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
-    return false;
-}
-
-// ======== READ LINE FROM TF-CARD ========
-bool read_gcode_line_from_sd(FILE *f, char *buffer, size_t bufsize)
-{
-    if (fgets(buffer, bufsize, f) != NULL) {
-        return true;
-    }
-    return false;
-}
-
-// ======== EXECUTOR TASK ========
-void executor_task(void *pvParameters)
-{
-    char line[128];
-    FILE *gcode_file = fopen("/spiffs/gcode.txt", "r");
-    if (!gcode_file) {
-        ESP_LOGE(TAG, "G-code file not found!");
-        vTaskDelete(NULL);
-        return;
-    }
-
-    while (1) {
-        if (wifi_is_connected()) {
-            ESP_LOGI(TAG, "[Wi-Fi] Reading commands from server...");
-            // TODO: Реализовать получение G-кода по Wi-Fi (HTTP/WebSocket)
-            // Пока имитация:
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        } else {
-            ESP_LOGW(TAG, "[Offline] Executing G-code from flash...");
-            if (read_gcode_line_from_flash(gcode_file, line, sizeof(line))) {
-                ESP_LOGI(TAG, "Executing: %s", line);
-                // TODO: Выполнить команду G-кода
-                vTaskDelay(pdMS_TO_TICKS(500)); // Имитация выполнения
-            } else {
-                ESP_LOGI(TAG, "End of G-code file");
-                break;
-            }
-        }
-    }
-
-    fclose(gcode_file);
-    vTaskDelete(NULL);
 }
 
 // ======== MAIN APP ========
 void wifi_main(void)
 {
-    ESP_ERROR_CHECK(nvs_flash_init());
-    wifi_init_sta();
     init_filesystem();
+    get_device_id();
 
-    wifi_init();
+    while (wifi_init() != ESP_OK) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
     vTaskDelay(pdMS_TO_TICKS(5000)); // ждём IP
 
-    get_device_id();
-    mdns_init_client();
-
-    while (!find_and_connect_server()) {
-        ESP_LOGW(TAG, "No valid server found, retrying...");
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
-
-    ESP_LOGI(TAG, "Connected to server successfully. Ready for commands...");
+    connect_wifi();
 
     // Запуск основной задачи
     xTaskCreate(&executor_task, "executor_task", 8192, NULL, 5, NULL);

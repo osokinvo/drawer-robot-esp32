@@ -31,8 +31,10 @@
 // #include "sdmmc_cmd.h" // TF-card (закомментировано)
 
 #include "encoder.h"
+#include "force_measurement.h"
 #include "gcode.h"
 #include "motor.h"
+#include "spiffs.h"
 #include "wifi.h"
 
 
@@ -130,6 +132,7 @@
 #define TRUE 1                         // Признак активации флагов
 #define FALSE 0                        // Признак деактивации флагов
 
+
 #define OK 0                           // Признак успешного выполнения операции
 #define ERROR 1                        // Признак неудачного выполнения операции
 
@@ -138,14 +141,45 @@
 
 #define STEP_MIN_PERIOD 100             // Минимальная длительность высокого положения STEP шагового двигателя, мкс
 
-typedef struct {
-    int max_speed_U;        // максимальная скорость мотора U
-    int max_speed_V;        // максимальная скорость мотора V
-    int max_accel_U;        // максимальное линейное ускорение U
-    int max_accel_V;        // максимальное линейное ускорение V
-    int accel_U;            // линейное ускорение U
-    int accel_V;            // линейное ускорение V
+typedef enum {
+    ROBOT_OK = ESP_OK;                                      // Успешное выполнение
+    ROBOT_FAIL = ESP_FAIL;                                  // Общая ошибка
+    ROBOT_TIMEOUT = ESP_ERR_TIMEOUT;                        // Таймаут
+    ROBOT_ERR_NO_MEM = ESP_ERR_NO_MEM;                      // Ошибка выделения памяти
+    ROBOT_ERR_INVALID_ARG = ESP_ERR_INVALID_ARG;            // Неверные аргументы
+    ROBOT_ERR_INVALID_STATE = ESP_ERR_INVALID_STATE;        // Неверное состояние
+    ROBOT_ERR_INVALID_SIZE = ESP_ERR_INVALID_SIZE;          // Неверный размер
+    ROBOT_ERR_NOT_FOUND = ESP_ERR_NOT_FOUND;                // Элемент не найден
+    ROBOT_ERR_NOT_SUPPORTED = ESP_ERR_NOT_SUPPORTED;        // Операция или свойство не поддерживаются
+    ROBOT_ERR_INVALID_RESPONSE = ESP_ERR_INVALID_RESPONSE;  // Неверный ответ
+    ROBOT_ERR_INVALID_CRC = ESP_ERR_INVALID_CRC;            // Неверный CRC или контрольная сумма
+    ROBOT_ERR_INVALID_VERSION = ESP_ERR_INVALID_VERSION;    // Неверная версия
+    ROBOT_ERR_INVALID_MAC = ESP_ERR_INVALID_MAC;            // Неверный MAC-адрес
+    ROBOT_ERR_NOT_FINISHED = ESP_ERR_NOT_FINISHED;          // Операция не завершена
+    ROBOT_ERR_NOT_ALLOWED = ESP_ERR_NOT_ALLOWED;            // Операция не разрешена
+    ROBOT_ERR_WIFI_BASE = ESP_ERR_WIFI_BASE;                // Стартовый номер ошибок WiFi
+    ROBOT_ERR_MESH_BASE = ESP_ERR_MESH_BASE;                // Стартовый номер ошибок MESH
+    ROBOT_ERR_FLASH_BASE = ESP_ERR_FLASH_BASE;              // Стартовый номер ошибок FLASH
+    ROBOT_ERR_HW_CRYPTO_BASE = ESP_ERR_HW_CRYPTO_BASE;      // Стартовый номер ошибок HW_CRYPTO
+    ROBOT_ERR_MEMPROT_BASE = ESP_ERR_MEMPROT_BASE;          // Стартовый номер Memory Protection API
+}    robot_err_t;
 
+
+typedef struct {
+    uint32_t u_pos;
+    uint32_t v_pos;
+    uint16_t prev_u_speed;
+    uint16_t prev_v_speed;
+    uint16_t u_accel;
+    uint16_t v_accel;
+}   cmd_block_t;
+
+typedef struct {
+    uint16_t cmd_count;
+    cmd_block_t *cmds;
+}   cnd_cache_t;
+
+typedef struct {
     int speed_U_brake;       // скорость остановки U
     int speed_V_brake;       // скорость остановки V
 
@@ -157,8 +191,10 @@ typedef struct {
     int step_delay_brake;  // период шага двигателя тормоза, мкс
     int step_low_brake;    // период низкого положения STEP двигателя тормоза, мкс
 
+    cmd_cache_t cache;
+    uint16_t current_cmd;
 
-} RobotParams;
+} t_RobotParams;
 
 
 // =============================================
