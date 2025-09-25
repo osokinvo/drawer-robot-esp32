@@ -1,0 +1,16 @@
+#include "esp_log.h"
+
+setup()
+esp_log_level_set("*", ESP_LOG_INFO);
+ESP_LOGI("main", "Controller started");
+
+
+Запуск на linux
+
+screen /dev/ttyUSB0 115200
+
+У ESP32 UART0 (тот, что используется для USB) аппаратно закреплён:
+
+GPIO1 (TX0) — передача (от ESP32 к ПК).
+
+GPIO3 (RX0) — приём (от ПК к ESP32).

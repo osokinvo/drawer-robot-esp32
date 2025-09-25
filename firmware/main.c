@@ -9,7 +9,10 @@ SemaphoreHandle_t mutex;
 
 void setup() {
   
-  wifi_main(void)
+  esp_log_level_set("*", ESP_LOG_INFO);
+  LOGI("main", "Controller started");
+
+  wifi_main(void);
 
   // Создание задачи для приема G-кода
   xTaskCreate(receiveGCodeTask, "Receive G-Code", 2048, NULL, 2, NULL);

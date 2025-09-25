@@ -15,7 +15,6 @@
 #include "driver/pcnt.h"
 // #include "driver/sdmmc_host.h" // TF-card (закомментировано)
 #include "esp_timer.h"
-#include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
@@ -36,6 +35,23 @@
 #include "motor.h"
 #include "spiffs.h"
 #include "wifi.h"
+
+#define ENABLE_DEBUG_LOGS 1
+
+#if ENABLE_DEBUG_LOGS
+
+#include "esp_log.h"
+#define LOGI(tag, ftm, ...) ESP_LOGI(tag, ftm, ##__VA_ARGS__)
+#define LOGW(tag, ftm, ...) ESP_LOGW(tag, ftm, ##__VA_ARGS__)
+#define LOGE(tag, ftm, ...) ESP_LOGE(tag, ftm, ##__VA_ARGS__)
+
+#else
+
+#define LOGI(tag, ftm, ...) {}
+#define LOGW(tag, ftm, ...) {}
+#define LOGE(tag, ftm, ...) {}
+
+#endif
 
 
 // =============================================
@@ -67,12 +83,16 @@
 #define V_AXIS_ENC_B_PIN            14  // GPIO14 - Фаза B энкодера оси V
 #define V_AXIS_ENC_X_PIN            13  // GPIO13 - Индексный сигнал энкодера оси V
 
+#if ENABLE_DEBUG_LOGS == 0
+
 // =============================================
 // Управление двигателями (ШИМ/цифровые выходы)
 // =============================================
 #define Z_AXIS_MOTOR_PWM_PIN        23  // GPIO23 - ШИМ сигнал скорости двигателя оси Z
 #define Z_AXIS_MOTOR_CTRL_PIN       22  // GPIO22 - Сигнал включения двигателя оси Z
 #define Z_AXIS_MOTOR_DIR_PIN         1  // GPIO1  - Направление вращения двигателя оси Z
+
+#endif
 
 // =============================================
 // Управление осью U (цифровые выходы)
@@ -82,6 +102,8 @@
 #define U_AXIS_BRAKE_STEP_PIN       2  // GPIO2  - Шаг тормоза оси U
 #define U_AXIS_BRAKE_DIR_PIN       15  // GPIO15 - Направление тормоза оси U
 
+#if ENABLE_DEBUG_LOGS == 0
+
 // =============================================
 // Управление осью V (цифровые выходы)
 // =============================================
@@ -89,6 +111,8 @@
 #define V_AXIS_BRAKE_STEP_PIN       21  // GPIO21 - Шаг управления тормозом оси V
 #define V_AXIS_MOTOR_DIR_PIN        19  // GPIO19 - Направление двигателя оси V
 #define V_AXIS_MOTOR_STEP_PIN       18  // GPIO18 - Шаг двигателя оси V
+
+#endif
 
 // =============================================
 // I2C (датчики/дисплей)
